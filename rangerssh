@@ -1,0 +1,60 @@
+#!/bin/bash
+
+# Warna
+green='\e[1;32m'
+red='\e[1;31m'
+white='\e[1;37m'
+reset='\e[0m'
+
+echo -e "${green}=====================================${reset}"
+echo -e "${green}    SSH LOGIN SCANNER (Manual)      ${reset}"
+echo -e "${green}=====================================${reset}"
+
+# Input Manual
+read -p "Masukkan IP Awal (e.g., 192.168.1.1): " ip_start
+read -p "Masukkan IP Akhir (e.g., 192.168.1.255): " ip_end
+read -p "Masukkan Username: " user
+read -s -p "Masukkan Password: " password
+echo ""
+read -p "Masukkan Port SSH (default: 22): " port
+port=${port:-22}  # Jika kosong, default ke 22
+
+# Fungsi untuk mengubah IP ke angka
+ip_to_num() {
+    IFS=. read -r i1 i2 i3 i4 <<< "$1"
+    echo $(( (i1 << 24) + (i2 << 16) + (i3 << 8) + i4 ))
+}
+
+# Fungsi untuk mengubah angka ke IP
+num_to_ip() {
+    echo "$(( ($1 >> 24) & 255 )).$(( ($1 >> 16) & 255 )).$(( ($1 >> 8) & 255 )).$(( $1 & 255 ))"
+}
+
+# Konversi IP ke angka untuk looping
+start_num=$(ip_to_num "$ip_start")
+end_num=$(ip_to_num "$ip_end")
+
+for num in $(seq $start_num $end_num); do
+    ip=$(num_to_ip $num)
+
+    # Cek apakah port terbuka
+    nc -z -w1 $ip $port 2>/dev/null
+    if [ $? -eq 0 ]; then
+        echo -e "${green}[+] $ip => PORT $port OPEN${reset}"
+
+        # Coba Login SSH dengan timeout 60 detik
+        timeout 60s sshpass -p "$password" ssh -p $port -o ConnectTimeout=5 -o StrictHostKeyChecking=no "$user@$ip" "echo 'BERHASIL LOGIN ke $ip'" 2>/dev/null
+        
+        # Cek apakah berhasil login
+        if [ $? -eq 0 ]; then
+            echo -e "${green}[✅] Berhasil login ke $ip${reset}"
+            echo "$ip" >> berhasil_login.txt
+        else
+            echo -e "${red}[❌] Gagal login ke $ip atau timeout${reset}"
+        fi
+    else
+        echo -e "${red}[-] $ip => PORT $port CLOSED${reset}"
+    fi
+done
+
+echo -e "${white}Scan selesai. Cek hasil di berhasil_login.txt${reset}"
